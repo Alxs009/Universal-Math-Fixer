@@ -1,0 +1,9 @@
+G:\projects\c#\Universal-Math-Fixer\bin\Release\UniversalMaths.exe
+G:\projects\c#\Universal-Math-Fixer\bin\Release\UniversalMaths.pdb
+G:\projects\c#\Universal-Math-Fixer\bin\Release\dnlib.dll
+G:\projects\c#\Universal-Math-Fixer\bin\Release\dnlib.xml
+G:\projects\c#\Universal-Math-Fixer\obj\Release\UniversalMaths.csproj.AssemblyReference.cache
+G:\projects\c#\Universal-Math-Fixer\obj\Release\UniversalMaths.csproj.CoreCompileInputs.cache
+G:\projects\c#\Universal-Math-Fixer\obj\Release\UniversalMaths.csproj.CopyComplete
+G:\projects\c#\Universal-Math-Fixer\obj\Release\UniversalMaths.exe
+G:\projects\c#\Universal-Math-Fixer\obj\Release\UniversalMaths.pdb
