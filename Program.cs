@@ -8,73 +8,86 @@ using dnlib.DotNet.Emit;
 
 namespace UniversalMaths
 {
-    internal class Program
+    internal abstract class Program
     {
         public static void Main(string[] args)
         {
-            var moduleDefMd = ModuleDefMD.Load(args[0]);
-            var allMethods = LoadMethods();
-
-            foreach (var typeDef in moduleDefMd.GetTypes()
-                .Where(x => x.HasMethods))
+            if (args.Length < 1)
             {
-                foreach (var methodDef in typeDef.Methods
-                    .Where(x => x.HasBody))
-                {
-                    var instructions = methodDef.Body.Instructions;
-                    for (int i = 0; i < instructions.Count; i++)
-                    {
-                        if (instructions[i].OpCode == OpCodes.Call
-                            && instructions[i - 1].OpCode == OpCodes.Ldc_R8
-                            && instructions[i].Operand.ToString().Contains("Math::"))
-                        {
-                            var memberRef = instructions[i].Operand as MemberRef;
-                            if (allMethods.Any(x =>
-                                x.Item1 == memberRef.Name))
-                            {
-                                var resultMethod = allMethods.Find(x =>
-                                    x.Item2.ToString() == memberRef.Signature.ToString()
-                                        .Replace("System.", string.Empty)
-                                        .Replace(" ", $" {memberRef.Name}")).Item2;
-                                if (resultMethod != null)
-                                {
-                                    var invokedValue = resultMethod.Invoke(null,
-                                        new object[] {(double) instructions[i - 1].Operand});
-
-                                    instructions[i].OpCode = OpCodes.Ldc_R8;
-                                    instructions[i].Operand = invokedValue;
-                                    instructions[i - 1].OpCode = OpCodes.Nop;
-
-                                    Console.WriteLine($"[+] Math::{resultMethod.Name} returned: {invokedValue}");
-                                }
-                            }
-                        }
-                    }
-                }
+                Console.WriteLine("Usage: UniversalMaths <input assembly>");
+                return;
             }
 
-            moduleDefMd.Write(Path.GetDirectoryName(args[0]) + "\\" +
-                              Path.GetFileNameWithoutExtension(args[0]) +
-                              "_noMaths" + Path.GetExtension(args[0]));
-            Console.WriteLine($"[+] Saved!");
+            var inputAssemblyPath = args[0];
+            var outputAssemblyPath = GenerateOutputPath(inputAssemblyPath);
 
+            var module = ModuleDefMD.Load(inputAssemblyPath);
+            var mathMethods = LoadMathMethods();
+
+            ProcessMathCalls(module, mathMethods);
+
+            module.Write(outputAssemblyPath);
+            Console.WriteLine($"[+] Saved: {outputAssemblyPath}");
             Console.ReadKey(true);
         }
 
-        static List<Tuple<string, MethodInfo>> LoadMethods()
+        private static string GenerateOutputPath(string inputPath)
         {
-            var sortedList = new List<Tuple<string, MethodInfo>>();
-            var allMethods = typeof(Math).GetMethods()
-                .Where(x =>
-                    x.Name != "GetHashCode" && x.Name != "GetType"
-                                            && x.Name != "ToString"
-                                            && x.Name != "Equals")
+            var directory = Path.GetDirectoryName(inputPath) ?? throw new InvalidOperationException();
+            var fileName = Path.GetFileNameWithoutExtension(inputPath);
+            var extension = Path.GetExtension(inputPath);
+            return Path.Combine(directory, $"{fileName}_noMaths{extension}");
+            
+        }
+
+        private static List<MethodInfo> LoadMathMethods()
+        {
+            return typeof(Math)
+                .GetMethods()
+                .Where(methodInfo => !new[] { "GetHashCode", "GetType", "ToString", "Equals" }.Contains(methodInfo.Name))
                 .ToList();
+        }
 
-            foreach (var methodInfo in allMethods)
-                sortedList.Add(new Tuple<string, MethodInfo>(methodInfo.Name, methodInfo));
+        private static void ProcessMathCalls(ModuleDef module, List<MethodInfo> mathMethods)
+        {
+            var methodInstructions = module.GetTypes()
+                .Where(t => t.HasMethods)
+                .SelectMany(t => t.Methods.Where(m => m.HasBody))
+                .SelectMany(method => method.Body.Instructions);
 
-            return sortedList;
+            foreach (var instruction in methodInstructions.Where(instruction => IsMathCall(instruction, mathMethods)))
+            {
+                HandleMathCall(instruction, mathMethods);
+            }
+        }
+
+
+        private static bool IsMathCall(Instruction instruction, IEnumerable<MethodInfo> mathMethods)
+        {
+            if (instruction.OpCode == OpCodes.Call && instruction.Operand is MemberRef memberRef)
+            {
+                return mathMethods.Any(method =>
+                    method.Name == memberRef.Name &&
+                    method.ToString().Replace("System.", string.Empty).Replace(" ", $" {memberRef.Name}") ==
+                    memberRef.Signature.ToString());
+            }
+            return false;
+        }
+
+        private static void HandleMathCall(Instruction instruction, List<MethodInfo> mathMethods)
+        {
+            var ldcValue = (double)instruction.Operand;
+            instruction.OpCode = OpCodes.Ldc_R8;
+            instruction.Operand = InvokeMathMethod(ldcValue, mathMethods, instruction);
+        }
+
+        private static object? InvokeMathMethod(double ldcValue, IEnumerable<MethodInfo> mathMethods, Instruction instruction)
+        {
+            var resultMethod = mathMethods.FirstOrDefault(method =>
+                method.Name == ((MemberRef)instruction.Operand).Name);
+            if (resultMethod == null) return null;
+            instruction.OpCode = OpCodes.Nop;
+            return resultMethod.Invoke(null, new object[] { ldcValue });
         }
     }
 }
